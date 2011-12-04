@@ -2,6 +2,7 @@ PROJECT(Castor)
 CMAKE_MINIMUM_REQUIRED(VERSION 2.8)
 
 ADD_EXECUTABLE(castor
+  FaceDetector.cpp
   castor.cpp)
 
 SET(CMAKE_MODULE_PATH
