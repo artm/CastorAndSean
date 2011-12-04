@@ -1,0 +1,5 @@
+#!/bin/sh
+
+cmake ../Castor \
+  -DCMAKE_BUILD_TYPE=Debug
+
