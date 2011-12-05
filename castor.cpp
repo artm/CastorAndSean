@@ -1,16 +1,29 @@
+#include <string>
+#include <map>
 #include <iostream>
 #include <boost/filesystem.hpp>
 #include <boost/exception/get_error_info.hpp>
 #include <boost/exception/errinfo_file_name.hpp>
 #include <boost/format.hpp>
+#include <boost/foreach.hpp>
+#include <boost/assign/list_of.hpp>
 #include <gflags/gflags.h>
-#include <highgui.h>
 
+#include "castor.hpp"
 #include "FaceDetector.hpp"
 
 namespace fs = boost::filesystem;
+using namespace boost::assign;
 
-DEFINE_int32(cutout_size,100,"width/height of a normalized face square");
+DEFINE_string(mode,"import", "operation mode (import|pca)");
+
+fs::path datadir, incomingDir, origDir, seedDir;
+
+typedef void (*DoFun)();
+typedef std::map<std::string, DoFun> ModeMap;
+ModeMap mode_map = map_list_of
+("import", doImport)
+("pca", doPca);
 
 int main(int argc, char* argv[])
 {
@@ -24,11 +37,10 @@ int main(int argc, char* argv[])
         return 1;
     }
 
-    fs::path
-        datadir(argv[1]),
-        incomingDir(datadir / "new"),
-        origDir(datadir / "orig"),
-        seedDir(datadir / "seed");
+    datadir = fs::path(argv[1]);
+    incomingDir = datadir / "new";
+    origDir = datadir / "orig";
+    seedDir = datadir / "seed";
 
     if (!fs::is_directory(datadir)) {
         std::cerr << datadir << " not found or isn't a directory.\n";
@@ -46,45 +58,16 @@ int main(int argc, char* argv[])
     }
 
     try {
-        FaceDetector detector;
-        fs::directory_iterator incoming(incomingDir), dirEnd;
-
-        int totalCnt=0,facesCnt=0,failedCnt=0;
-
-        for(;incoming != dirEnd; ++incoming, ++totalCnt) {
-            fs::path inPath = (*incoming).path();
-            std::string path = inPath.native();
-            cv::Mat input = cv::imread(path, 0); // force grayscale
-
-            std::vector<cv::Rect> faces;
-            detector.detect(input, faces);
-            if (faces.size() > 0) {
-                // cut out all found faces
-                facesCnt += faces.size();
-                for(int i = 0; i<faces.size(); ++i) {
-                    // cut out the face
-                    cv::Mat face(input,faces[i]);
-                    cv::resize(face, face,
-                            cv::Size(FLAGS_cutout_size,FLAGS_cutout_size));
-                    // normalize brightness / increase contrast
-                    cv::equalizeHist(face, face);
-                    // save
-                    std::string seedName = inPath.stem().native();
-                    if (faces.size() > 1) {
-                        seedName += boost::str(boost::format("_%d") % (i+1));
-                    }
-                    cv::imwrite((seedDir / (seedName + ".png")).native(),face);
-                }
-                // move image to orig/
-                fs::rename( inPath, origDir / inPath.filename() );
-            } else {
-                std::cout << "No faces found in " << path << "\n";
-                failedCnt++;
+        if (mode_map.count(FLAGS_mode) > 0)
+            mode_map[FLAGS_mode]();
+        else {
+            std::cerr << "Unknown operation mode: " << FLAGS_mode << "\n"
+                << "Mode should be one of:\n";
+            BOOST_FOREACH(const ModeMap::value_type pair, mode_map) {
+                std::cerr << "  " << pair.first << "\n";
             }
+            return 1;
         }
-        std::cout << "\nProcessed " << totalCnt << " images. Found "
-            << facesCnt << " faces. No faces were found in "
-            << failedCnt << " images.\n";
     } catch (FaceDetector::load_error& e) {
         std::cerr
             << "Error loading classifier cascade for face detector: "

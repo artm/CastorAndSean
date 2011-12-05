@@ -3,6 +3,8 @@ CMAKE_MINIMUM_REQUIRED(VERSION 2.8)
 
 ADD_EXECUTABLE(castor
   FaceDetector.cpp
+  doImport.cpp
+  doPca.cpp
   castor.cpp)
 
 SET(CMAKE_MODULE_PATH
