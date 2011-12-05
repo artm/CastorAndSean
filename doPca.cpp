@@ -11,6 +11,7 @@
 
 DEFINE_int32(pca_seedsCount,64,"How many seed images to use for PCA");
 DEFINE_int32(pca_maxComponents,0,"How many components to keep");
+DEFINE_bool(pca_hobbit,false,"Project seeds to eigenspace and back");
 DECLARE_int32(cutout_size);
 
 namespace fs = boost::filesystem;
@@ -59,9 +60,7 @@ void doPca()
 
     // save stuff
     fs::path eigenDir = datadir / "eigen";
-    if (!fs::exists(eigenDir)) {
-        fs::create_directory(eigenDir);
-    }
+    if (!fs::exists(eigenDir)) fs::create_directory(eigenDir);
     cv::imwrite((eigenDir/"mean.png").native(), pca.mean.reshape(0,FLAGS_cutout_size));
     for(int i = 0; i<pca.eigenvectors.rows; ++i) {
         cv::Mat eigenface = pca.eigenvectors.row(i).reshape(0,FLAGS_cutout_size);
@@ -71,9 +70,23 @@ void doPca()
         cv::Mat e8;
         eigenface.convertTo(e8, CV_8UC1, scale, offset);
         cv::equalizeHist(e8, e8);
-        std::string path = (eigenDir / boost::str(boost::format("eigen%03d.png") % i)).native();
+        std::string path = (eigenDir / boost::str(boost::format("eigen%03d.png") % (i+1) )).native();
         std::cout << "Saving " << path << "\n";
         cv::imwrite(path, e8);
+    }
+
+    if (FLAGS_pca_hobbit) {
+        fs::path hobbitDir = datadir / "hobbit";
+        if (!fs::exists(hobbitDir)) fs::create_directory(hobbitDir);
+
+        cv::Mat there = pca.project(pcaInput);
+        cv::Mat back = pca.backProject(there);
+        for(int i = 0; i < back.rows; ++i) {
+            cv::Mat hobbit = back.row(i).reshape(0,FLAGS_cutout_size);
+            std::string hobbit_path = (hobbitDir/boost::str(boost::format("hobbit%03d.png")%(i+1)))
+                .native();
+            cv::imwrite(hobbit_path,hobbit);
+        }
     }
 }
 
