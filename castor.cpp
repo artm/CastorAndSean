@@ -1,13 +1,10 @@
-#include <string>
 #include <map>
 #include <iostream>
-#include <boost/filesystem.hpp>
 #include <boost/exception/get_error_info.hpp>
 #include <boost/exception/errinfo_file_name.hpp>
 #include <boost/format.hpp>
 #include <boost/foreach.hpp>
 #include <boost/assign/list_of.hpp>
-#include <gflags/gflags.h>
 
 #include "castor.hpp"
 #include "FaceDetector.hpp"

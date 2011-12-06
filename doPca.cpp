@@ -61,11 +61,12 @@ void doPca()
 
     // save stuff
     // save pca as yaml
-    cv::FileStorage storage( eigenDir % "pca.yml", cv::FileStorage::WRITE);
-    storage << "eigenvectors" << pca.eigenvectors;
-    storage << "eigenvalues" << pca.eigenvalues;
-    storage << "mean" << pca.mean;
-    storage.release();
+    {
+        cv::FileStorage storage( eigenDir % "pca.yml", cv::FileStorage::WRITE);
+        storage << "eigenvectors" << pca.eigenvectors;
+        storage << "eigenvalues" << pca.eigenvalues;
+        storage << "mean" << pca.mean;
+    }
 
     cv::imwrite( eigenDir % "mean.png", pca.mean.reshape(0,FLAGS_cutout_size));
     for(int i = 0; i<pca.eigenvectors.rows; ++i) {

@@ -5,6 +5,9 @@
 #include <boost/format.hpp>
 #include <boost/exception/all.hpp>
 #include <string>
+#include <gflags/gflags.h>
+#include <cv.h>
+#include <highgui.h>
 
 namespace fs = boost::filesystem;
 
