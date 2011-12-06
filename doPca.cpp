@@ -25,6 +25,7 @@ int rnd(int base, int len)
 
 void doPca()
 {
+    fs::path seedDir = inputDir("seed"), eigenDir = outputDir("eigen"), hobbitDir = outputDir("hobbit");
     fs::directory_iterator seedIter(seedDir), dirEnd;
     std::vector<std::string> seedList;
     for(;seedIter != dirEnd; ++seedIter) {
@@ -59,17 +60,14 @@ void doPca()
     std::cout << " done\n";
 
     // save stuff
-    fs::path eigenDir = datadir / "eigen";
-    if (!fs::exists(eigenDir)) fs::create_directory(eigenDir);
-
     // save pca as yaml
-    cv::FileStorage storage( (eigenDir/"pca.yml").native(), cv::FileStorage::WRITE);
+    cv::FileStorage storage( eigenDir % "pca.yml", cv::FileStorage::WRITE);
     storage << "eigenvectors" << pca.eigenvectors;
     storage << "eigenvalues" << pca.eigenvalues;
     storage << "mean" << pca.mean;
     storage.release();
 
-    cv::imwrite((eigenDir/"mean.png").native(), pca.mean.reshape(0,FLAGS_cutout_size));
+    cv::imwrite( eigenDir % "mean.png", pca.mean.reshape(0,FLAGS_cutout_size));
     for(int i = 0; i<pca.eigenvectors.rows; ++i) {
         cv::Mat eigenface = pca.eigenvectors.row(i).reshape(0,FLAGS_cutout_size);
         double min, max;
@@ -78,21 +76,17 @@ void doPca()
         cv::Mat e8;
         eigenface.convertTo(e8, CV_8UC1, scale, offset);
         cv::equalizeHist(e8, e8);
-        std::string path = (eigenDir / boost::str(boost::format("eigen%03d.png") % (i+1) )).native();
+        std::string path = eigenDir + boost::format("eigen%03d.png") % (i+1);
         std::cout << "Saving " << path << "\n";
         cv::imwrite(path, e8);
     }
 
     if (FLAGS_pca_hobbit) {
-        fs::path hobbitDir = datadir / "hobbit";
-        if (!fs::exists(hobbitDir)) fs::create_directory(hobbitDir);
-
         cv::Mat there = pca.project(pcaInput);
         cv::Mat back = pca.backProject(there);
         for(int i = 0; i < back.rows; ++i) {
             cv::Mat hobbit = back.row(i).reshape(0,FLAGS_cutout_size);
-            std::string hobbit_path = (hobbitDir/boost::str(boost::format("hobbit%03d.png")%(i+1)))
-                .native();
+            std::string hobbit_path = hobbitDir + boost::format("hobbit%03d.png") % (i+1);
             cv::imwrite(hobbit_path,hobbit);
         }
     }

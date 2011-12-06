@@ -14,7 +14,9 @@ DEFINE_int32(cutout_size,100, "width/height of a normalized face square");
 void doImport()
 {
     FaceDetector detector;
+    fs::path incomingDir = inputDir("new");
     fs::directory_iterator incoming(incomingDir), dirEnd;
+    fs::path seedDir = outputDir("seed"), origDir = outputDir("orig");
 
     int totalCnt=0,facesCnt=0,failedCnt=0;
 
@@ -40,7 +42,7 @@ void doImport()
                 if (faces.size() > 1) {
                     seedName += boost::str(boost::format("_%d") % (i+1));
                 }
-                cv::imwrite((seedDir / (seedName + ".png")).native(),face);
+                cv::imwrite(seedDir % seedName + ".png", face);
             }
             // move image to orig/
             fs::rename( inPath, origDir / inPath.filename() );

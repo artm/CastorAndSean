@@ -12,18 +12,18 @@
 #include "castor.hpp"
 #include "FaceDetector.hpp"
 
-namespace fs = boost::filesystem;
 using namespace boost::assign;
 
-DEFINE_string(mode,"import", "operation mode (import|pca)");
+DEFINE_string(mode,"import", "operation mode (import|pca|project)");
 
-fs::path datadir, incomingDir, origDir, seedDir;
+fs::path datadir;
 
 typedef void (*DoFun)();
 typedef std::map<std::string, DoFun> ModeMap;
 ModeMap mode_map = map_list_of
 ("import", doImport)
-("pca", doPca);
+("pca", doPca)
+("project", doProject);
 
 int main(int argc, char* argv[])
 {
@@ -38,42 +38,53 @@ int main(int argc, char* argv[])
     }
 
     datadir = fs::path(argv[1]);
-    incomingDir = datadir / "new";
-    origDir = datadir / "orig";
-    seedDir = datadir / "seed";
-
     if (!fs::is_directory(datadir)) {
         std::cerr << datadir << " not found or isn't a directory.\n";
         return 1;
     }
 
-    if (!fs::is_directory(incomingDir)
-            || !fs::is_directory(origDir)
-            || !fs::is_directory(seedDir)) {
-        std::cerr << "Data directory " << datadir << " should contain subdirectories "
-            << incomingDir.filename() << ", "
-            << origDir.filename() << " and "
-            << seedDir.filename() << ".\n";
-        return 1;
-    }
-
     try {
-        if (mode_map.count(FLAGS_mode) > 0)
+        if (mode_map.count(FLAGS_mode) > 0) {
             mode_map[FLAGS_mode]();
-        else {
+            return 0;
+        } else {
             std::cerr << "Unknown operation mode: " << FLAGS_mode << "\n"
                 << "Mode should be one of:\n";
             BOOST_FOREACH(const ModeMap::value_type pair, mode_map) {
                 std::cerr << "  " << pair.first << "\n";
             }
-            return 1;
         }
     } catch (FaceDetector::load_error& e) {
         std::cerr
             << "Error loading classifier cascade for face detector: "
             << *boost::get_error_info< boost::errinfo_file_name >(e) << "\n";
-        return 1;
+    } catch (NoInputDirectory& e) {
+        std::cerr
+            << "Input directory '"
+            << *boost::get_error_info< boost::errinfo_file_name >(e)
+            << "' not found\n";
     }
 
-    return 0;
+    return 1;
 }
+
+// throw if doesn't exist
+fs::path inputDir(const std::string& dirname)
+{
+    fs::path result = datadir / dirname;
+    if (fs::exists(result))
+        return result;
+    else
+        throw NoInputDirectory(result.native());
+}
+
+// create if doesn't exist
+fs::path outputDir(const std::string& dirname)
+{
+    fs::path result = datadir / dirname;
+    if (!fs::exists(result)) {
+        fs::create_directory(result);
+    }
+    return result;
+}
+

@@ -5,6 +5,7 @@ ADD_EXECUTABLE(castor
   FaceDetector.cpp
   doImport.cpp
   doPca.cpp
+  doProject.cpp
   castor.cpp)
 
 SET(CMAKE_MODULE_PATH

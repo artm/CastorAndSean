@@ -3,13 +3,12 @@
 
 #include <string>
 #include <vector>
-#include <boost/exception/all.hpp>
 #include <cv.h>
+#include "castor.hpp"
 
 class FaceDetector {
 public:
-    struct exception_base: virtual std::exception, virtual boost::exception {};
-    struct load_error : virtual exception_base {};
+    struct load_error : virtual CastorError {};
 
     FaceDetector();
     void detect(const cv::Mat& grayImg, std::vector<cv::Rect>& faces);
