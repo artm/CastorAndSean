@@ -1,5 +1,6 @@
 #!/bin/sh
 
-cmake ../Castor \
+cmake ../castor \
+  -DCINDER_ROOT=/Users/artm/src/Cinder \
   -DCMAKE_BUILD_TYPE=Debug
 
