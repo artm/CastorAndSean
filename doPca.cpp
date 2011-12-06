@@ -61,6 +61,14 @@ void doPca()
     // save stuff
     fs::path eigenDir = datadir / "eigen";
     if (!fs::exists(eigenDir)) fs::create_directory(eigenDir);
+
+    // save pca as yaml
+    cv::FileStorage storage( (eigenDir/"pca.yml").native(), cv::FileStorage::WRITE);
+    storage << "eigenvectors" << pca.eigenvectors;
+    storage << "eigenvalues" << pca.eigenvalues;
+    storage << "mean" << pca.mean;
+    storage.release();
+
     cv::imwrite((eigenDir/"mean.png").native(), pca.mean.reshape(0,FLAGS_cutout_size));
     for(int i = 0; i<pca.eigenvectors.rows; ++i) {
         cv::Mat eigenface = pca.eigenvectors.row(i).reshape(0,FLAGS_cutout_size);
