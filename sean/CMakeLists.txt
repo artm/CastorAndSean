@@ -1,6 +1,9 @@
 FILE(GLOB SEED_PNG ../../data/seed/*.png)
+SET(CLASSIFIER haarcascade_frontalface_alt.xml)
 ADD_EXECUTABLE(sean MACOSX_BUNDLE
   ../../data/projection/projection.yml
+  ../../data/eigen/pca.yml
+  ${CLASSIFIER}
   ${SEED_PNG}
   sean.cpp)
 SET_TARGET_PROPERTIES(sean
@@ -49,6 +52,8 @@ INCLUDE_DIRECTORIES(${Boost_INCLUDE_DIRS})
 # copy mac resources...
 SET_SOURCE_FILES_PROPERTIES(
   ../../data/projection/projection.yml
+  ../../data/eigen/pca.yml
+  ${CLASSIFIER}
   PROPERTIES
   MACOSX_PACKAGE_LOCATION Resources)
 
