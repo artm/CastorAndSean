@@ -101,8 +101,8 @@ class Sean : public AppBasic {
             glScalef(texScale,texScale,1);
             glTranslatef(i%fpl,i/fpl,0);
             glMatrixMode(GL_MODELVIEW);
-
-            gl::drawBillboard( m_positions[i], Vec2f(300,300), 0, mRight, mUp);
+            float sz = 100;
+            gl::drawBillboard( m_positions[i], Vec2f(sz,sz), 0, mRight, mUp);
         }
         m_texture.unbind();
 
