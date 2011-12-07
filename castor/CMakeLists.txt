@@ -1,0 +1,25 @@
+ADD_EXECUTABLE(castor
+  FaceDetector.cpp
+  doImport.cpp
+  doPca.cpp
+  doProject.cpp
+  castor.cpp)
+
+SET(CMAKE_MODULE_PATH
+  "${CMAKE_SOURCE_DIR}/cmake;${CMAKE_MODULE_PATH}")
+INCLUDE(ConfigMacros)
+
+FIND_PACKAGE(OpenCV REQUIRED)
+INCLUDE_DIRECTORIES(${OpenCV_INCLUDE_DIR})
+TARGET_LINK_LIBRARIES(castor ${OpenCV_LIBS})
+
+FIND_PACKAGE(Boost
+  COMPONENTS system filesystem
+  REQUIRED)
+INCLUDE_DIRECTORIES(${Boost_INCLUDE_DIRS})
+TARGET_LINK_LIBRARIES(castor ${Boost_LIBRARIES})
+
+REQUIRE_HEADER(gflags_INCLUDE gflags/gflags.h)
+FIND_AND_LINK_LIBRARY(gflags castor)
+
+
