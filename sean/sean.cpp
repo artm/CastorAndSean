@@ -7,6 +7,7 @@
 #include <cinder/Capture.h>
 #include <cinder/Arcball.h>
 #include <cinder/params/Params.h>
+#include <cinder/Rand.h>
 
 #include <CinderOpenCV.h>
 
@@ -19,24 +20,29 @@
 using namespace ci;
 using namespace ci::app;
 
-
 class Sean : public AppBasic {
     gl::Texture m_texture;
     std::vector<Vec3f> m_positions;
+    std::vector<int> m_order;
 
     CameraPersp m_cam;
     params::InterfaceGl m_gui;
 
     Capture m_capture;
     gl::Texture m_RTFace;
-    Vec3f m_RTFacePos;
-    bool m_haveRTFace;
+    Vec3f m_RTFaceProj, m_RTFacePos;
 
     cv::CascadeClassifier m_classifier;
     cv::PCA m_pca;
 
+    float m_flightInertia, m_followInertia, m_rotateInertia;
+
     void setup()
     {
+        m_flightInertia = 0.01;
+        m_followInertia = 0.01;
+        m_rotateInertia = 0.001;
+
         // load the projected
         std::vector<std::string> seedNames;
         cv::Mat projection;
@@ -73,6 +79,7 @@ class Sean : public AppBasic {
                     projection.at<float>(i,0),
                     projection.at<float>(i,1),
                     projection.at<float>(i,2)));
+            m_order.push_back(i);
             i++;
         }
         gl::Texture::Format fmt;
@@ -81,7 +88,10 @@ class Sean : public AppBasic {
         m_texture = gl::Texture( texture, fmt );
 
         m_cam.setPerspective( 90.0f, getWindowAspectRatio(), 10.0f, 5000.0f );
-        //m_gui = params::InterfaceGl( "Sean Archer", Vec2i( 225, 200 ) );
+        m_gui = params::InterfaceGl( "Sean Archer", Vec2i( 225, 200 ) );
+        m_gui.addParam("Flight inertia", &m_flightInertia);
+        m_gui.addParam("Follow inertia", &m_followInertia);
+        m_gui.addParam("Rotate inertia", &m_rotateInertia);
 
         GLfloat fogColor[4]= {0,0,0,1};
         glFogi(GL_FOG_MODE, GL_EXP);
@@ -89,25 +99,32 @@ class Sean : public AppBasic {
         glFogf(GL_FOG_DENSITY, 5e-4);
         glEnable(GL_FOG);
 
-        gl::enableAlphaBlending();
-        // sort by distance from origin
-        std::sort(m_positions.begin(), m_positions.end(), boost::bind(&Sean::further, this, _1, _2));
+        glEnable (GL_DEPTH_TEST);
 
+        gl::enableAlphaBlending();
         std::vector< Capture::DeviceRef > devices = Capture::getDevices(true);
         if (devices.size()>0) {
             m_capture = Capture(320,240,devices[0]);
             m_capture.start();
         }
-        m_haveRTFace = false;
-        m_RTFacePos = Vec3f(0,0,0);
+        m_RTFaceProj = m_RTFacePos = Rand::randVec3f()*1000.0;
         m_classifier.load(
                 loadResource("haarcascade_frontalface_alt.xml")
                 ->getFilePath().native());
         m_RTFace = gl::Texture(64,64);
     }
 
-    bool further(Vec3f a, Vec3f b) {
-        return a.distanceSquared(m_cam.getEyePoint()) > b.distanceSquared(m_cam.getEyePoint());
+    void sort()
+    {
+        // sort by distance from camera
+        std::sort(m_order.begin(), m_order.end(),
+                boost::bind(&Sean::further, this, _1, _2));
+    }
+
+    bool further(int a, int b) {
+        Vec3f eye = m_cam.getEyePoint();
+        return m_positions[a].distanceSquared(eye)
+            > m_positions[b].distanceSquared(eye);
     }
 
     void update() {
@@ -126,42 +143,52 @@ class Sean : public AppBasic {
                 cv::resize(frame,frame,cv::Size(64,64));
                 Surface8u face( fromOcv(frame));
                 m_RTFace.update( face, m_RTFace.getBounds() );
-                m_haveRTFace = true;
                 // project to eigen space
                 cv::Mat proj = m_pca.project( frame.reshape(0,1) );
-                Vec3f vproj = Vec3f(
+                m_RTFaceProj = Vec3f(
                         proj.at<float>(0,0),
                         proj.at<float>(0,1),
                         proj.at<float>(0,2));
 
-                m_RTFacePos = m_RTFacePos.lerp(0.03, vproj);
-            } else {
-                m_haveRTFace = false;
             }
+        }
+        // move face toward projected position
+        m_RTFacePos = m_RTFacePos.lerp(m_flightInertia, m_RTFaceProj);
 
+        // move the camera to a certain offset from rt face
+        Vec3f flyTarget = m_RTFacePos;
+        if (flyTarget.length() == 0) {
+            // fly target depends on where the camera is
+            flyTarget = Rand::randVec3f();
         }
 
+        float targetDistance = 400.0;
+
+        flyTarget += flyTarget.normalized() * targetDistance;
+        Vec3f eye = m_cam.getEyePoint();
+        eye = eye.lerp(m_followInertia, flyTarget);
+        m_cam.setEyePoint(eye);
+
+        Vec3f dir0 = m_cam.getViewDirection();
+        Vec3f dir1 = m_RTFacePos - eye;
+        m_cam.setViewDirection( dir0.lerp(m_rotateInertia, dir1) );
+
+        sort();
     }
 
     void draw()
     {
         float sz = 150;
 
-        gl::clear( Color(0,0,0) );
-
-        if (m_RTFacePos.length() > 1) {
-            Vec3f dir = m_cam.getViewDirection();
-            Vec3f dir1 = m_RTFacePos.normalized() * dir.length();
-            m_cam.setViewDirection(dir.lerp(.1, dir1));
-        }
+        gl::clear( Color(0,0,0), true );
 
         gl::setMatrices( m_cam );
         Vec3f right, up;
         m_cam.getBillboardVectors(&right, &up);
 
 
+        gl::color( 0.9, 1, 0.9, .6);
         if (m_RTFacePos.length() > m_cam.getNearClip()) {
-            gl::color( 1, 1, 0.9, 1);
             glMatrixMode(GL_TEXTURE);
             glLoadIdentity();
             glMatrixMode(GL_MODELVIEW);
@@ -170,12 +197,11 @@ class Sean : public AppBasic {
             m_RTFace.unbind();
         }
 
-        gl::color( 1, 1, 0.9, .4);
 
         m_texture.enableAndBind();
         int fpl = 2048/64;
         float texScale = 1.0f/fpl;
-        for(int i=0; i<m_positions.size(); ++i) {
+        BOOST_FOREACH(int i, m_order) {
             glMatrixMode(GL_TEXTURE);
             glLoadIdentity();
             glScalef(texScale,texScale,1);
