@@ -44,6 +44,8 @@ class Sean : public AppBasic {
 
     cv::CascadeClassifier m_classifier;
     cv::PCA m_pca;
+    cv::Mat m_projection;
+
     float m_targetDistance, m_portraitSize;
 
     float m_flightInertia, m_followInertia, m_rotateInertia;
@@ -52,13 +54,12 @@ class Sean : public AppBasic {
     {
         // load the projected
         std::vector<std::string> seedNames;
-        cv::Mat projection;
         { // load projection
             cv::FileStorage yml(
                     loadResource("projection.yml")->getFilePath().native(),
                     cv::FileStorage::READ );
             yml["seednames"] >> seedNames;
-            yml["projection"] >> projection;
+            yml["projection"] >> m_projection;
         }
         { // load pca
             cv::FileStorage yml(
@@ -88,9 +89,9 @@ class Sean : public AppBasic {
                     face.getBounds(),
                     Vec2i( i%fpl*64,i/fpl*64 ));
             m_positions.push_back( Vec3f(
-                    projection.at<float>(i,d(0)),
-                    projection.at<float>(i,d(1)),
-                    projection.at<float>(i,d(2))));
+                    m_projection.at<float>(i,d(0)),
+                    m_projection.at<float>(i,d(1)),
+                    m_projection.at<float>(i,d(2))));
             m_order.push_back(i);
             i++;
         }
@@ -101,7 +102,6 @@ class Sean : public AppBasic {
 
         m_cam.setPerspective( 90.0f, getWindowAspectRatio(), 10.0f, 5000.0f );
         m_gui = params::InterfaceGl( "Sean Archer", Vec2i( 250, 150 ) );
-
 
         m_flightInertia = 0.05;
         m_gui.addParam("Flight inertia", &m_flightInertia,
@@ -123,6 +123,7 @@ class Sean : public AppBasic {
         m_gui.addParam("Portrait size", &m_portraitSize,
                 "min=1 max=600 step=1 precision=0");
 
+        m_gui.addButton("Other axes", boost::bind(&Sean::otherAxes, this));
 
         GLfloat fogColor[4]= {0,0,0,1};
         glFogi(GL_FOG_MODE, GL_EXP);
@@ -309,6 +310,18 @@ class Sean : public AppBasic {
     {
         push_back( m_eigenAxes, irange(0,m_pca.eigenvectors.rows) );
         random_shuffle( m_eigenAxes );
+    }
+
+    void otherAxes()
+    {
+        m_chosenAxes += 3;
+        if (m_chosenAxes > m_eigenAxes.size()-3)
+            m_chosenAxes = 0;
+        for(int i=0; i<m_positions.size(); i++)
+            m_positions[i] = Vec3f(
+                    m_projection.at<float>(i,d(0)),
+                    m_projection.at<float>(i,d(1)),
+                    m_projection.at<float>(i,d(2)));
     }
 };
 CINDER_APP_BASIC( Sean, RendererGl )
