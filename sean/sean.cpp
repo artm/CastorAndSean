@@ -131,25 +131,32 @@ class Sean : public AppBasic {
         if (m_capture.isCapturing() && m_capture.checkNewFrame()) {
             // capture a frame
             Surface8u input = m_capture.getSurface();
-            cv::Mat frame = toOcvRef(input);
-            cv::cvtColor(frame, frame, CV_RGB2GRAY);
 
-            // detect a face
-            std::vector<cv::Rect> faces;
-            m_classifier.detectMultiScale( frame, faces, 1.3, 3, 0, cv::Size(10,10));
-            if (faces.size() > 0) {
-                frame = cv::Mat(frame, faces[0]);
-                cv::equalizeHist(frame, frame);
-                cv::resize(frame,frame,cv::Size(64,64));
-                Surface8u face( fromOcv(frame));
-                m_RTFace.update( face, m_RTFace.getBounds() );
-                // project to eigen space
-                cv::Mat proj = m_pca.project( frame.reshape(0,1) );
-                m_RTFaceProj = Vec3f(
-                        proj.at<float>(0,0),
-                        proj.at<float>(0,1),
-                        proj.at<float>(0,2));
+            try {
 
+                cv::Mat frame = toOcvRef(input);
+                cv::cvtColor(frame, frame, CV_RGB2GRAY);
+
+                // detect a face
+                std::vector<cv::Rect> faces;
+                m_classifier.detectMultiScale( frame, faces, 1.3, 3, 0,
+                        cv::Size(10,10));
+                if (faces.size() > 0) {
+                    frame = cv::Mat(frame, faces[0]);
+                    cv::equalizeHist(frame, frame);
+                    cv::resize(frame,frame,cv::Size(64,64));
+                    Surface8u face( fromOcv(frame));
+                    m_RTFace.update( face, m_RTFace.getBounds() );
+                    // project to eigen space
+                    cv::Mat proj = m_pca.project( frame.reshape(0,1) );
+                    m_RTFaceProj = Vec3f(
+                            proj.at<float>(0,0),
+                            proj.at<float>(0,1),
+                            proj.at<float>(0,2));
+
+                }
+            } catch (cv::Exception& e) {
+                // ignore
             }
         }
         // move face toward projected position
