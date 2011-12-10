@@ -13,12 +13,17 @@
 
 #include <boost/foreach.hpp>
 #include <boost/bind.hpp>
+#include <boost/range/irange.hpp>
+#include <boost/range/algorithm.hpp>
+#include <boost/range/algorithm_ext/push_back.hpp>
 #include <vector>
 #include <string>
 #include <iostream>
 
 using namespace ci;
 using namespace ci::app;
+
+using namespace boost;
 
 class Sean : public AppBasic {
     gl::Texture m_texture;
@@ -32,28 +37,30 @@ class Sean : public AppBasic {
     gl::Texture m_RTFace;
     Vec3f m_RTFaceProj, m_RTFacePos;
 
+    //! a shuffled vector of eigenspace axes
+    std::vector<int> m_eigenAxes;
+    //! offset into m_eigenAxes
+    int m_chosenAxes;
+
     cv::CascadeClassifier m_classifier;
     cv::PCA m_pca;
+    float m_targetDistance, m_portraitSize;
 
     float m_flightInertia, m_followInertia, m_rotateInertia;
 
     void setup()
     {
-        m_flightInertia = 0.01;
-        m_followInertia = 0.01;
-        m_rotateInertia = 0.001;
-
         // load the projected
         std::vector<std::string> seedNames;
         cv::Mat projection;
-        {
+        { // load projection
             cv::FileStorage yml(
                     loadResource("projection.yml")->getFilePath().native(),
                     cv::FileStorage::READ );
             yml["seednames"] >> seedNames;
             yml["projection"] >> projection;
         }
-        {
+        { // load pca
             cv::FileStorage yml(
                     loadResource("pca.yml")->getFilePath().native(),
                     cv::FileStorage::READ );
@@ -62,9 +69,14 @@ class Sean : public AppBasic {
             yml["mean"] >> m_pca.mean;
 
             // well, actually we only care for the first three...
-            m_pca.eigenvectors = m_pca.eigenvectors.rowRange(0,2);
-            m_pca.eigenvalues = m_pca.eigenvalues.rowRange(0,2);
+            //m_pca.eigenvectors = m_pca.eigenvectors.rowRange(0,2);
+            //m_pca.eigenvalues = m_pca.eigenvalues.rowRange(0,2);
         }
+
+        Rand::randomize();
+        // decide which three axes to use
+        m_chosenAxes = 0;
+        shuffleAxes();
 
         Surface8u texture(2048,2048,false);
         int i = 0, fpl = 2048/64; // faces per line
@@ -76,9 +88,9 @@ class Sean : public AppBasic {
                     face.getBounds(),
                     Vec2i( i%fpl*64,i/fpl*64 ));
             m_positions.push_back( Vec3f(
-                    projection.at<float>(i,0),
-                    projection.at<float>(i,1),
-                    projection.at<float>(i,2)));
+                    projection.at<float>(i,d(0)),
+                    projection.at<float>(i,d(1)),
+                    projection.at<float>(i,d(2))));
             m_order.push_back(i);
             i++;
         }
@@ -88,13 +100,29 @@ class Sean : public AppBasic {
         m_texture = gl::Texture( texture, fmt );
 
         m_cam.setPerspective( 90.0f, getWindowAspectRatio(), 10.0f, 5000.0f );
-        m_gui = params::InterfaceGl( "Sean Archer", Vec2i( 225, 200 ) );
+        m_gui = params::InterfaceGl( "Sean Archer", Vec2i( 250, 150 ) );
+
+
+        m_flightInertia = 0.05;
         m_gui.addParam("Flight inertia", &m_flightInertia,
                 "min=1e-5 max=1 step=1e-3 precision=5");
+
+        m_followInertia = 0.1;
         m_gui.addParam("Follow inertia", &m_followInertia,
                 "min=1e-5 max=1 step=1e-3 precision=5");
+
+        m_rotateInertia = 0.001;
         m_gui.addParam("Rotate inertia", &m_rotateInertia,
                 "min=1e-5 max=1 step=1e-3 precision=5");
+
+        m_targetDistance = 100.0f;
+        m_gui.addParam("Target distance", &m_targetDistance,
+                "min=1 max=1000 step=10 precision=1");
+
+        m_portraitSize = 50.0f;
+        m_gui.addParam("Portrait size", &m_portraitSize,
+                "min=1 max=600 step=1 precision=0");
+
 
         GLfloat fogColor[4]= {0,0,0,1};
         glFogi(GL_FOG_MODE, GL_EXP);
@@ -115,13 +143,6 @@ class Sean : public AppBasic {
                 loadResource("haarcascade_frontalface_alt.xml")
                 ->getFilePath().native());
         m_RTFace = gl::Texture(64,64);
-    }
-
-    void sort()
-    {
-        // sort by distance from camera
-        std::sort(m_order.begin(), m_order.end(),
-                boost::bind(&Sean::further, this, _1, _2));
     }
 
     bool further(int a, int b) {
@@ -153,9 +174,9 @@ class Sean : public AppBasic {
                     // project to eigen space
                     cv::Mat proj = m_pca.project( frame.reshape(0,1) );
                     m_RTFaceProj = Vec3f(
-                            proj.at<float>(0,0),
-                            proj.at<float>(0,1),
-                            proj.at<float>(0,2));
+                            proj.at<float>(0,d(0)),
+                            proj.at<float>(0,d(1)),
+                            proj.at<float>(0,d(2)));
 
                 }
             } catch (cv::Exception& e) {
@@ -172,9 +193,7 @@ class Sean : public AppBasic {
             flyTarget = Rand::randVec3f();
         }
 
-        float targetDistance = 400.0;
-
-        flyTarget += flyTarget.normalized() * targetDistance;
+        flyTarget += flyTarget.normalized() * m_targetDistance;
         Vec3f eye = m_cam.getEyePoint();
         eye = eye.lerp(m_followInertia, flyTarget);
         m_cam.setEyePoint(eye);
@@ -183,7 +202,43 @@ class Sean : public AppBasic {
         Vec3f dir1 = m_RTFacePos - eye;
         m_cam.setViewDirection( dir0.lerp(m_rotateInertia, dir1) );
 
-        sort();
+        sortSprites();
+    }
+
+    void draw()
+    {
+        Vec2f sz = Vec2f(1,1) * m_portraitSize;
+
+        gl::clear( Color(0,0,0), true );
+
+        gl::setMatrices( m_cam );
+        Vec3f right, up;
+        m_cam.getBillboardVectors(&right, &up);
+
+
+        gl::color( 0.9, 1, 0.9, .6);
+        if (m_RTFacePos.length() > m_cam.getNearClip()) {
+            m_RTFace.enableAndBind();
+            drawBillboard( m_RTFacePos, sz, right, up);
+            m_RTFace.unbind();
+        }
+
+        m_texture.enableAndBind();
+        int fpl = 2048/64;
+        float texScale = 1.0f/fpl;
+        BOOST_FOREACH(int i, m_order) {
+            Vec2f uv00 = Vec2f(i%fpl, i/fpl)*texScale,
+                  uv11 = uv00+Vec2f(texScale,texScale);
+            drawBillboard( m_positions[i], sz, right, up, uv00, uv11);
+        }
+        m_texture.unbind();
+
+        params::InterfaceGl::draw();
+    }
+
+    void resize(ResizeEvent e)
+    {
+        m_cam.setAspectRatio(e.getAspectRatio());
     }
 
     inline static void drawBillboard(const Vec3f& pos, const Vec2f& scale,
@@ -237,41 +292,23 @@ class Sean : public AppBasic {
                 Vec2f(0,0), Vec2f(1,1));
     }
 
-    void draw()
+    void sortSprites()
     {
-        float fsz = 150;
-        Vec2f sz = Vec2f(fsz,fsz);
-
-        gl::clear( Color(0,0,0), true );
-
-        gl::setMatrices( m_cam );
-        Vec3f right, up;
-        m_cam.getBillboardVectors(&right, &up);
-
-
-        gl::color( 0.9, 1, 0.9, .6);
-        if (m_RTFacePos.length() > m_cam.getNearClip()) {
-            m_RTFace.enableAndBind();
-            drawBillboard( m_RTFacePos, sz, right, up);
-            m_RTFace.unbind();
-        }
-
-        m_texture.enableAndBind();
-        int fpl = 2048/64;
-        float texScale = 1.0f/fpl;
-        BOOST_FOREACH(int i, m_order) {
-            Vec2f uv00 = Vec2f(i%fpl, i/fpl)*texScale,
-                  uv11 = uv00+Vec2f(texScale,texScale);
-            drawBillboard( m_positions[i], sz, right, up, uv00, uv11);
-        }
-        m_texture.unbind();
-
-        params::InterfaceGl::draw();
+        // sort by distance from camera
+        std::sort(m_order.begin(), m_order.end(),
+                boost::bind(&Sean::further, this, _1, _2));
     }
 
-    void resize(ResizeEvent e)
+    //! i-th chosen shuffled axis
+    int d(int i)
     {
-        m_cam.setAspectRatio(e.getAspectRatio());
+        return m_eigenAxes[m_chosenAxes + i];
+    }
+
+    void shuffleAxes()
+    {
+        push_back( m_eigenAxes, irange(0,m_pca.eigenvectors.rows) );
+        random_shuffle( m_eigenAxes );
     }
 };
 CINDER_APP_BASIC( Sean, RendererGl )
