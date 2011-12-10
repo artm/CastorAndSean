@@ -46,7 +46,8 @@ contains a list of filenames and a matrix with the results of projection
 ## sean
 
 Sean is a visualisation of the faces projection in 3-dimensional space
-of the first three eigenvectors.
+of three random eigenvectors. Sean looks for faces in a webcam feed and 
+if found projects them into eigenspace.
 
 Sean uses cinder (and hence has to be 32-bit) and the 32-bit versions of
 opencv and boost that come with cinder. At the moment sean is mac only
