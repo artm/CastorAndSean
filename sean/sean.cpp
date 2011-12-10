@@ -89,9 +89,12 @@ class Sean : public AppBasic {
 
         m_cam.setPerspective( 90.0f, getWindowAspectRatio(), 10.0f, 5000.0f );
         m_gui = params::InterfaceGl( "Sean Archer", Vec2i( 225, 200 ) );
-        m_gui.addParam("Flight inertia", &m_flightInertia);
-        m_gui.addParam("Follow inertia", &m_followInertia);
-        m_gui.addParam("Rotate inertia", &m_rotateInertia);
+        m_gui.addParam("Flight inertia", &m_flightInertia,
+                "min=1e-5 max=1 step=1e-3 precision=5");
+        m_gui.addParam("Follow inertia", &m_followInertia,
+                "min=1e-5 max=1 step=1e-3 precision=5");
+        m_gui.addParam("Rotate inertia", &m_rotateInertia,
+                "min=1e-5 max=1 step=1e-3 precision=5");
 
         GLfloat fogColor[4]= {0,0,0,1};
         glFogi(GL_FOG_MODE, GL_EXP);
