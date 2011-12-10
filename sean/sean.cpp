@@ -8,6 +8,8 @@
 #include <cinder/Arcball.h>
 #include <cinder/params/Params.h>
 #include <cinder/Rand.h>
+#include <cinder/Timer.h>
+#include <cinder/Easing.h>
 
 #include <CinderOpenCV.h>
 
@@ -27,7 +29,8 @@ using namespace boost;
 
 class Sean : public AppBasic {
     gl::Texture m_texture;
-    std::vector<Vec3f> m_positions;
+    std::vector<Vec3f> m_positions[2];
+    float m_interp, m_interpSpeed, m_interpTime;
     std::vector<int> m_order;
 
     CameraPersp m_cam;
@@ -49,6 +52,8 @@ class Sean : public AppBasic {
     float m_targetDistance, m_portraitSize;
 
     float m_flightInertia, m_followInertia, m_rotateInertia;
+
+    Timer m_timer;
 
     void setup()
     {
@@ -79,6 +84,8 @@ class Sean : public AppBasic {
         m_chosenAxes = 0;
         shuffleAxes();
 
+        m_interp = m_interpSpeed = 0.0;
+
         Surface8u texture(2048,2048,false);
         int i = 0, fpl = 2048/64; // faces per line
         BOOST_FOREACH(std::string path, seedNames) {
@@ -88,10 +95,11 @@ class Sean : public AppBasic {
                     face,
                     face.getBounds(),
                     Vec2i( i%fpl*64,i/fpl*64 ));
-            m_positions.push_back( Vec3f(
+            m_positions[0].push_back( Vec3f(
                     m_projection.at<float>(i,d(0)),
                     m_projection.at<float>(i,d(1)),
                     m_projection.at<float>(i,d(2))));
+            m_positions[1].push_back(Vec3f::zero());
             m_order.push_back(i);
             i++;
         }
@@ -123,6 +131,10 @@ class Sean : public AppBasic {
         m_gui.addParam("Portrait size", &m_portraitSize,
                 "min=1 max=600 step=1 precision=0");
 
+        m_interpTime = 3;
+        m_gui.addParam("Interpolation time", &m_interpTime,
+                "min=0.5 max=20 step=0.1 precision=1");
+
         m_gui.addButton("Other axes", boost::bind(&Sean::otherAxes, this));
 
         GLfloat fogColor[4]= {0,0,0,1};
@@ -148,11 +160,25 @@ class Sean : public AppBasic {
 
     bool further(int a, int b) {
         Vec3f eye = m_cam.getEyePoint();
-        return m_positions[a].distanceSquared(eye)
-            > m_positions[b].distanceSquared(eye);
+        return p(a).distanceSquared(eye)
+            > p(b).distanceSquared(eye);
     }
 
     void update() {
+        m_timer.stop();
+        float deltaTime = m_timer.getSeconds();
+        m_timer.start();
+
+        // advance interpolation if any
+        m_interp += deltaTime * m_interpSpeed;
+        if (m_interp < 0) {
+            m_interp = 0;
+            m_interpSpeed = 0;
+        } else if (m_interp > 1) {
+            m_interp = 1;
+            m_interpSpeed = 0;
+        }
+
         if (m_capture.isCapturing() && m_capture.checkNewFrame()) {
             // capture a frame
             Surface8u input = m_capture.getSurface();
@@ -230,7 +256,7 @@ class Sean : public AppBasic {
         BOOST_FOREACH(int i, m_order) {
             Vec2f uv00 = Vec2f(i%fpl, i/fpl)*texScale,
                   uv11 = uv00+Vec2f(texScale,texScale);
-            drawBillboard( m_positions[i], sz, right, up, uv00, uv11);
+            drawBillboard( p(i), sz, right, up, uv00, uv11);
         }
         m_texture.unbind();
 
@@ -306,6 +332,13 @@ class Sean : public AppBasic {
         return m_eigenAxes[m_chosenAxes + i];
     }
 
+    //! interpolated position of i-th sprite
+    Vec3f p(int i)
+    {
+        float t = easeInOutQuad(m_interp);
+        return m_positions[0][i].lerp(t, m_positions[1][i]);
+    }
+
     void shuffleAxes()
     {
         push_back( m_eigenAxes, irange(0,m_pca.eigenvectors.rows) );
@@ -314,14 +347,24 @@ class Sean : public AppBasic {
 
     void otherAxes()
     {
+        int idx;
+        if (m_interp < 0.01f) {
+            idx = 1;
+            m_interpSpeed = 1./m_interpTime;
+        } else if (m_interp > 0.99f) {
+            idx = 0;
+            m_interpSpeed = -1./m_interpTime;
+        } else {
+            return;
+        }
+
         m_chosenAxes += 3;
         if (m_chosenAxes > m_eigenAxes.size()-3)
             m_chosenAxes = 0;
-        for(int i=0; i<m_positions.size(); i++)
-            m_positions[i] = Vec3f(
-                    m_projection.at<float>(i,d(0)),
-                    m_projection.at<float>(i,d(1)),
-                    m_projection.at<float>(i,d(2)));
+
+        for(int i=0; i<m_positions[idx].size(); i++)
+            for(int j=0; j<3; j++)
+                m_positions[idx][i][j] = m_projection.at<float>(i,d(j));
     }
 };
 CINDER_APP_BASIC( Sean, RendererGl )
