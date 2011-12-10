@@ -176,9 +176,61 @@ class Sean : public AppBasic {
         sort();
     }
 
+    inline static void drawBillboard(const Vec3f& pos, const Vec2f& scale,
+            const Vec3f &bbRight, const Vec3f &bbUp, GLfloat texCoords[] )
+    {
+        glEnableClientState( GL_VERTEX_ARRAY );
+        Vec3f verts[4];
+        glVertexPointer( 3, GL_FLOAT, 0, &verts[0].x );
+        glEnableClientState( GL_TEXTURE_COORD_ARRAY );
+        glTexCoordPointer( 2, GL_FLOAT, 0, texCoords );
+
+        Vec2f halfscale = 0.5f * scale;
+
+        verts[0] = pos
+            + bbRight * halfscale.x
+            + bbUp    * halfscale.y;
+        verts[1] = pos
+            + bbRight * halfscale.x
+            - bbUp    * halfscale.y;
+        verts[2] = pos
+            - bbRight * halfscale.x
+            + bbUp    * halfscale.y;
+        verts[3] = pos
+            - bbRight * halfscale.x
+            - bbUp    * halfscale.y;
+
+        glDrawArrays( GL_TRIANGLE_STRIP, 0, 4 );
+
+        glDisableClientState( GL_VERTEX_ARRAY );
+        glDisableClientState( GL_TEXTURE_COORD_ARRAY );
+    }
+
+    inline static void drawBillboard(const Vec3f& pos, const Vec2f& scale,
+            const Vec3f &bbRight, const Vec3f &bbUp,
+            const Vec2f& uv00, const Vec2f& uv11 )
+    {
+        GLfloat texCoords[8] = {
+            uv00.x, uv00.y,
+            uv00.x, uv11.y,
+            uv11.x, uv00.y,
+            uv11.x, uv11.y
+        };
+        drawBillboard(pos, scale, bbRight, bbUp, texCoords);
+    }
+
+    inline static void drawBillboard(const Vec3f& pos, const Vec2f& scale,
+            const Vec3f &bbRight, const Vec3f &bbUp )
+    {
+        drawBillboard(pos, scale,
+                bbRight, bbUp,
+                Vec2f(0,0), Vec2f(1,1));
+    }
+
     void draw()
     {
-        float sz = 150;
+        float fsz = 150;
+        Vec2f sz = Vec2f(fsz,fsz);
 
         gl::clear( Color(0,0,0), true );
 
@@ -189,25 +241,18 @@ class Sean : public AppBasic {
 
         gl::color( 0.9, 1, 0.9, .6);
         if (m_RTFacePos.length() > m_cam.getNearClip()) {
-            glMatrixMode(GL_TEXTURE);
-            glLoadIdentity();
-            glMatrixMode(GL_MODELVIEW);
             m_RTFace.enableAndBind();
-            gl::drawBillboard( m_RTFacePos, Vec2f(sz,sz), 0, right, up);
+            drawBillboard( m_RTFacePos, sz, right, up);
             m_RTFace.unbind();
         }
-
 
         m_texture.enableAndBind();
         int fpl = 2048/64;
         float texScale = 1.0f/fpl;
         BOOST_FOREACH(int i, m_order) {
-            glMatrixMode(GL_TEXTURE);
-            glLoadIdentity();
-            glScalef(texScale,texScale,1);
-            glTranslatef(i%fpl,i/fpl,0);
-            glMatrixMode(GL_MODELVIEW);
-            gl::drawBillboard( m_positions[i], Vec2f(sz,sz), 0, right, up);
+            Vec2f uv00 = Vec2f(i%fpl, i/fpl)*texScale,
+                  uv11 = uv00+Vec2f(texScale,texScale);
+            drawBillboard( m_positions[i], sz, right, up, uv00, uv11);
         }
         m_texture.unbind();
 
