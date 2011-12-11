@@ -135,7 +135,8 @@ class Sean : public AppBasic {
         m_gui.addParam("Interpolation time", &m_interpTime,
                 "min=0.5 max=20 step=0.1 precision=1");
 
-        m_gui.addButton("Other axes", boost::bind(&Sean::otherAxes, this));
+        m_gui.addButton("Other axes", boost::bind(&Sean::otherAxes, this),
+                "key=space");
 
         GLfloat fogColor[4]= {0,0,0,1};
         glFogi(GL_FOG_MODE, GL_EXP);
@@ -246,7 +247,7 @@ class Sean : public AppBasic {
         gl::color( 0.9, 1, 0.9, .6);
         if (m_RTFacePos.length() > m_cam.getNearClip()) {
             m_RTFace.enableAndBind();
-            drawBillboard( m_RTFacePos, sz, right, up);
+            gl::drawBillboard( m_RTFacePos, sz, right, up);
             m_RTFace.unbind();
         }
 
@@ -256,7 +257,7 @@ class Sean : public AppBasic {
         BOOST_FOREACH(int i, m_order) {
             Vec2f uv00 = Vec2f(i%fpl, i/fpl)*texScale,
                   uv11 = uv00+Vec2f(texScale,texScale);
-            drawBillboard( p(i), sz, right, up, uv00, uv11);
+            gl::drawBillboard( p(i), sz, right, up, uv00, uv11);
         }
         m_texture.unbind();
 
@@ -266,57 +267,6 @@ class Sean : public AppBasic {
     void resize(ResizeEvent e)
     {
         m_cam.setAspectRatio(e.getAspectRatio());
-    }
-
-    inline static void drawBillboard(const Vec3f& pos, const Vec2f& scale,
-            const Vec3f &bbRight, const Vec3f &bbUp, GLfloat texCoords[] )
-    {
-        glEnableClientState( GL_VERTEX_ARRAY );
-        Vec3f verts[4];
-        glVertexPointer( 3, GL_FLOAT, 0, &verts[0].x );
-        glEnableClientState( GL_TEXTURE_COORD_ARRAY );
-        glTexCoordPointer( 2, GL_FLOAT, 0, texCoords );
-
-        Vec2f halfscale = 0.5f * scale;
-
-        verts[0] = pos
-            + bbRight * halfscale.x
-            + bbUp    * halfscale.y;
-        verts[1] = pos
-            + bbRight * halfscale.x
-            - bbUp    * halfscale.y;
-        verts[2] = pos
-            - bbRight * halfscale.x
-            + bbUp    * halfscale.y;
-        verts[3] = pos
-            - bbRight * halfscale.x
-            - bbUp    * halfscale.y;
-
-        glDrawArrays( GL_TRIANGLE_STRIP, 0, 4 );
-
-        glDisableClientState( GL_VERTEX_ARRAY );
-        glDisableClientState( GL_TEXTURE_COORD_ARRAY );
-    }
-
-    inline static void drawBillboard(const Vec3f& pos, const Vec2f& scale,
-            const Vec3f &bbRight, const Vec3f &bbUp,
-            const Vec2f& uv00, const Vec2f& uv11 )
-    {
-        GLfloat texCoords[8] = {
-            uv00.x, uv00.y,
-            uv00.x, uv11.y,
-            uv11.x, uv00.y,
-            uv11.x, uv11.y
-        };
-        drawBillboard(pos, scale, bbRight, bbUp, texCoords);
-    }
-
-    inline static void drawBillboard(const Vec3f& pos, const Vec2f& scale,
-            const Vec3f &bbRight, const Vec3f &bbUp )
-    {
-        drawBillboard(pos, scale,
-                bbRight, bbUp,
-                Vec2f(0,0), Vec2f(1,1));
     }
 
     void sortSprites()
