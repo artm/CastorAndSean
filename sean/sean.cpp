@@ -18,6 +18,8 @@
 #include <boost/range/irange.hpp>
 #include <boost/range/algorithm.hpp>
 #include <boost/range/algorithm_ext/push_back.hpp>
+#include <boost/range/adaptor/map.hpp>
+#include <boost/function.hpp>
 #include <vector>
 #include <string>
 #include <iostream>
@@ -26,11 +28,89 @@ using namespace ci;
 using namespace ci::app;
 
 using namespace boost;
+using namespace boost::adaptors;
+
+class Animator {
+    Timer m_timer;
+    float m_deltaTime;
+
+    struct Track {
+        typedef boost::function<void (float t)> FloatSetter;
+        FloatSetter set;
+        float t;
+        float speed;
+        bool finished;
+
+        Track() {}
+
+        Track(FloatSetter setter, float _t, float _speed)
+            : set(setter), t(_t), speed(_speed), finished(false)
+        {}
+
+        void advance(float deltaTime) {
+            t += deltaTime * speed;
+            if (t<=0) {
+                t = 0;
+                finished = true;
+            } else if (t>=1) {
+                t = 1;
+                finished = true;
+            }
+            set(t);
+        }
+
+        bool isFinished() const { return finished; }
+        static void setFloat(float* var, float val) { *var = val; }
+    };
+
+    std::map<std::string, Track> m_tracks;
+    typedef std::pair<std::string, Track> NamedTrack;
+public:
+    Animator()
+        : m_deltaTime(0)
+    {}
+
+    void update() {
+        m_timer.stop();
+        m_deltaTime = m_timer.getSeconds();
+        m_timer.start();
+        BOOST_FOREACH(Track& t, m_tracks | map_values) {
+            t.advance(m_deltaTime);
+        }
+        BOOST_FOREACH(const std::string& name, m_tracks | map_keys) {
+            if (m_tracks[name].isFinished())
+                m_tracks.erase(name);
+        }
+    }
+
+    float deltaTime() const { return m_deltaTime; }
+    bool isFinished(const std::string& name)
+    {
+        return m_tracks.count(name) == 0;
+    }
+
+    void animate(const std::string& name, float * target, float speed)
+    {
+        m_tracks[name] = Track(
+                boost::bind(&Track::setFloat,target,_1),
+                *target,
+                speed);
+    }
+
+    typedef boost::function<float (float t)> FloatAdaptor;
+    void animate(const std::string& name, float * target, float speed, FloatAdaptor adaptor)
+    {
+        m_tracks[name] = Track(
+                    boost::bind(&Track::setFloat,target,boost::bind(adaptor,_1)),
+                    *target,
+                    speed);
+    }
+};
 
 class Sean : public AppBasic {
     gl::Texture m_texture;
     std::vector<Vec3f> m_positions[2];
-    float m_interp, m_interpSpeed, m_interpTime;
+    float m_interp, m_interpTime;
     std::vector<int> m_order;
 
     CameraPersp m_cam;
@@ -52,8 +132,7 @@ class Sean : public AppBasic {
     float m_targetDistance, m_portraitSize;
 
     float m_flightInertia, m_followInertia, m_rotateInertia;
-
-    Timer m_timer;
+    Animator m_animator;
 
     void setup()
     {
@@ -84,7 +163,7 @@ class Sean : public AppBasic {
         m_chosenAxes = 0;
         shuffleAxes();
 
-        m_interp = m_interpSpeed = 0.0;
+        m_interp = 0.0;
 
         Surface8u texture(2048,2048,false);
         int i = 0, fpl = 2048/64; // faces per line
@@ -132,7 +211,7 @@ class Sean : public AppBasic {
                 "min=1 max=600 step=1 precision=0");
 
         m_interpTime = 3;
-        m_gui.addParam("Interpolation time", &m_interpTime,
+        m_gui.addParam("Reorganization time", &m_interpTime,
                 "min=0.5 max=20 step=0.1 precision=1");
 
         m_gui.addButton("Other axes", boost::bind(&Sean::otherAxes, this),
@@ -166,19 +245,7 @@ class Sean : public AppBasic {
     }
 
     void update() {
-        m_timer.stop();
-        float deltaTime = m_timer.getSeconds();
-        m_timer.start();
-
-        // advance interpolation if any
-        m_interp += deltaTime * m_interpSpeed;
-        if (m_interp < 0) {
-            m_interp = 0;
-            m_interpSpeed = 0;
-        } else if (m_interp > 1) {
-            m_interp = 1;
-            m_interpSpeed = 0;
-        }
+        m_animator.update();
 
         if (m_capture.isCapturing() && m_capture.checkNewFrame()) {
             // capture a frame
@@ -285,8 +352,7 @@ class Sean : public AppBasic {
     //! interpolated position of i-th sprite
     Vec3f p(int i)
     {
-        float t = easeInOutQuad(m_interp);
-        return m_positions[0][i].lerp(t, m_positions[1][i]);
+        return m_positions[0][i].lerp(m_interp, m_positions[1][i]);
     }
 
     void shuffleAxes()
@@ -297,15 +363,16 @@ class Sean : public AppBasic {
 
     void otherAxes()
     {
-        int idx;
-        if (m_interp < 0.01f) {
-            idx = 1;
-            m_interpSpeed = 1./m_interpTime;
-        } else if (m_interp > 0.99f) {
-            idx = 0;
-            m_interpSpeed = -1./m_interpTime;
-        } else {
+        if (!m_animator.isFinished("interp"))
             return;
+
+        int idx;
+        if (m_interp < 0.5f) {
+            idx = 1;
+            m_animator.animate("interp", &m_interp, 1./m_interpTime);
+        } else {
+            idx = 0;
+            m_animator.animate("interp", &m_interp, -1./m_interpTime);
         }
 
         m_chosenAxes += 3;
