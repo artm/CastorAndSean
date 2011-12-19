@@ -5,9 +5,11 @@ ADD_EXECUTABLE(sean MACOSX_BUNDLE
   ../../data/eigen/pca.yml
   ${CLASSIFIER}
   ${SEED_PNG}
+  PersistentParams.cpp
   sean.cpp)
 SET_TARGET_PROPERTIES(sean
   PROPERTIES
+  COMPILE_FLAGS "-fvisibility-inlines-hidden"
   OSX_ARCHITECTURES i386
   MACOSX_BUNDLE true
   MACOSX_BUNDLE_BUNDLE_NAME "Sean"

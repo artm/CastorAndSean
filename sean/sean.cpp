@@ -1,3 +1,6 @@
+#include "Animator.hpp"
+#include "PersistentParams.hpp"
+
 #include <cinder/app/AppBasic.h>
 #include <cinder/gl/gl.h>
 #include <cinder/gl/Texture.h>
@@ -6,23 +9,22 @@
 #include <cinder/Camera.h>
 #include <cinder/Capture.h>
 #include <cinder/Arcball.h>
-#include <cinder/params/Params.h>
 #include <cinder/Rand.h>
-#include <cinder/Timer.h>
 #include <cinder/Easing.h>
 
 #include <CinderOpenCV.h>
 
 #include <boost/foreach.hpp>
+#include <boost/format.hpp>
 #include <boost/bind.hpp>
 #include <boost/range/irange.hpp>
 #include <boost/range/algorithm.hpp>
 #include <boost/range/algorithm_ext/push_back.hpp>
-#include <boost/range/adaptor/map.hpp>
-#include <boost/function.hpp>
+
 #include <vector>
 #include <string>
 #include <iostream>
+
 
 using namespace ci;
 using namespace ci::app;
@@ -30,110 +32,11 @@ using namespace ci::app;
 using namespace boost;
 using namespace boost::adaptors;
 
-class Animator {
-    Timer m_timer;
-    float m_deltaTime;
-
-    struct Track {
-        typedef boost::function<void (float t)> FloatSetter;
-        FloatSetter set;
-        float t;
-        float speed;
-        bool finished;
-
-        Track() {}
-
-        Track(FloatSetter setter, float _t, float _speed)
-            : set(setter), t(_t), speed(_speed), finished(false)
-        {}
-
-        void advance(float deltaTime) {
-            t += deltaTime * speed;
-            if (t<=0) {
-                t = 0;
-                finished = true;
-            } else if (t>=1) {
-                t = 1;
-                finished = true;
-            }
-            set(t);
-        }
-
-        bool isFinished() const { return finished; }
-        static void setFloat(float* var, float val) { *var = val; }
-    };
-
-    std::map<std::string, Track> m_tracks;
-    typedef std::pair<std::string, Track> NamedTrack;
-public:
-    Animator()
-        : m_deltaTime(0)
-    {}
-
-    void update() {
-        m_timer.stop();
-        m_deltaTime = m_timer.getSeconds();
-        m_timer.start();
-        BOOST_FOREACH(Track& t, m_tracks | map_values) {
-            t.advance(m_deltaTime);
-        }
-        BOOST_FOREACH(const std::string& name, m_tracks | map_keys) {
-            if (m_tracks[name].isFinished())
-                m_tracks.erase(name);
-        }
-    }
-
-    float deltaTime() const { return m_deltaTime; }
-    bool isFinished(const std::string& name)
-    {
-        return m_tracks.count(name) == 0;
-    }
-
-    void animate(const std::string& name, float * target, float speed)
-    {
-        m_tracks[name] = Track(
-                boost::bind(&Track::setFloat,target,_1),
-                *target,
-                speed);
-    }
-
-    typedef boost::function<float (float t)> FloatAdaptor;
-    void animate(const std::string& name, float * target, float speed, FloatAdaptor adaptor)
-    {
-        m_tracks[name] = Track(
-                    boost::bind(&Track::setFloat,target,boost::bind(adaptor,_1)),
-                    *target,
-                    speed);
-    }
-};
 
 class Sean : public AppBasic {
-    gl::Texture m_texture;
-    std::vector<Vec3f> m_positions[2];
-    float m_interp, m_interpTime;
-    std::vector<int> m_order;
-
-    CameraPersp m_cam;
-    params::InterfaceGl m_gui;
-
-    Capture m_capture;
-    gl::Texture m_RTFace;
-    Vec3f m_RTFaceProj, m_RTFacePos;
-
-    //! a shuffled vector of eigenspace axes
-    std::vector<int> m_eigenAxes;
-    //! offset into m_eigenAxes
-    int m_chosenAxes;
-
-    cv::CascadeClassifier m_classifier;
-    cv::PCA m_pca;
-    cv::Mat m_projection;
-
-    float m_targetDistance, m_portraitSize;
-
-    float m_flightInertia, m_followInertia, m_rotateInertia;
-    Animator m_animator;
-
+    virtual ~Sean() {
+        PersistentParams::save();
+    }
     void setup()
     {
         // load the projected
@@ -165,6 +68,13 @@ class Sean : public AppBasic {
 
         m_interp = 0.0;
 
+        for(int i = 0; i<m_projection.cols; i++) {
+            cv::Scalar mean, stddev;
+            cv::meanStdDev(m_projection.col(i),mean,stddev);
+            m_mean.push_back(mean[0]);
+            m_stddev.push_back(stddev[0]);
+        }
+
         Surface8u texture(2048,2048,false);
         int i = 0, fpl = 2048/64; // faces per line
         BOOST_FOREACH(std::string path, seedNames) {
@@ -174,10 +84,7 @@ class Sean : public AppBasic {
                     face,
                     face.getBounds(),
                     Vec2i( i%fpl*64,i/fpl*64 ));
-            m_positions[0].push_back( Vec3f(
-                    m_projection.at<float>(i,d(0)),
-                    m_projection.at<float>(i,d(1)),
-                    m_projection.at<float>(i,d(2))));
+            m_positions[0].push_back( studentized(m_projection, i) );
             m_positions[1].push_back(Vec3f::zero());
             m_order.push_back(i);
             i++;
@@ -187,35 +94,32 @@ class Sean : public AppBasic {
         fmt.setMinFilter(GL_LINEAR_MIPMAP_NEAREST);
         m_texture = gl::Texture( texture, fmt );
 
-        m_cam.setPerspective( 90.0f, getWindowAspectRatio(), 10.0f, 5000.0f );
-        m_gui = params::InterfaceGl( "Sean Archer", Vec2i( 250, 150 ) );
+        m_cam.setPerspective( 90.0f, getWindowAspectRatio(), 0.01f, 5.0f );
 
-        m_flightInertia = 0.05;
-        m_gui.addParam("Flight inertia", &m_flightInertia,
+        PersistentParams::load( std::string(getenv("HOME")) + "/.seanrc" );
+        m_gui = PersistentParams( "Sean Archer", Vec2i( 250, 250 ) );
+
+        m_gui.addPersistentParam("Flight inertia", &m_flightInertia, 0.1,
                 "min=1e-5 max=1 step=1e-3 precision=5");
 
-        m_followInertia = 0.1;
-        m_gui.addParam("Follow inertia", &m_followInertia,
+        m_gui.addPersistentParam("Follow inertia", &m_followInertia, 0.5,
                 "min=1e-5 max=1 step=1e-3 precision=5");
 
-        m_rotateInertia = 0.001;
-        m_gui.addParam("Rotate inertia", &m_rotateInertia,
+        m_gui.addPersistentParam("Rotate inertia", &m_rotateInertia, 0.1,
                 "min=1e-5 max=1 step=1e-3 precision=5");
 
-        m_targetDistance = 100.0f;
-        m_gui.addParam("Target distance", &m_targetDistance,
-                "min=1 max=1000 step=10 precision=1");
+        m_gui.addPersistentParam("Target distance", &m_targetDistance, 0.3,
+                "min=0.01 max=5 step=0.01 precision=2");
 
-        m_portraitSize = 50.0f;
-        m_gui.addParam("Portrait size", &m_portraitSize,
-                "min=1 max=600 step=1 precision=0");
+        m_gui.addPersistentParam("Portrait size", &m_portraitSize, 0.1,
+                "min=0.01 max=1.0 step=0.01 precision=2");
 
-        m_interpTime = 3;
-        m_gui.addParam("Reorganization time", &m_interpTime,
+        m_gui.addPersistentParam("Reorganization time", &m_interpTime, 2,
                 "min=0.5 max=20 step=0.1 precision=1");
 
-        m_gui.addButton("Other axes", boost::bind(&Sean::otherAxes, this),
-                "key=space");
+        m_gui.addButton("Other axes", boost::bind(&Sean::otherAxes, this), "key=space");
+        m_gui.addButton("Toggle fullscreen", boost::bind(&Sean::toggleFullscreen, this),
+                "key=f");
 
         GLfloat fogColor[4]= {0,0,0,1};
         glFogi(GL_FOG_MODE, GL_EXP);
@@ -231,7 +135,7 @@ class Sean : public AppBasic {
             m_capture = Capture(320,240,devices[0]);
             m_capture.start();
         }
-        m_RTFaceProj = m_RTFacePos = Rand::randVec3f()*1000.0;
+        m_RTFaceProj = m_RTFacePos = Vec3f(0,0,0);
         m_classifier.load(
                 loadResource("haarcascade_frontalface_alt.xml")
                 ->getFilePath().native());
@@ -252,7 +156,6 @@ class Sean : public AppBasic {
             Surface8u input = m_capture.getSurface();
 
             try {
-
                 cv::Mat frame = toOcvRef(input);
                 cv::cvtColor(frame, frame, CV_RGB2GRAY);
 
@@ -268,11 +171,7 @@ class Sean : public AppBasic {
                     m_RTFace.update( face, m_RTFace.getBounds() );
                     // project to eigen space
                     cv::Mat proj = m_pca.project( frame.reshape(0,1) );
-                    m_RTFaceProj = Vec3f(
-                            proj.at<float>(0,d(0)),
-                            proj.at<float>(0,d(1)),
-                            proj.at<float>(0,d(2)));
-
+                    m_RTFaceProj = studentized(proj, 0);
                 }
             } catch (cv::Exception& e) {
                 // ignore
@@ -312,11 +211,9 @@ class Sean : public AppBasic {
 
 
         gl::color( 0.9, 1, 0.9, .6);
-        if (m_RTFacePos.length() > m_cam.getNearClip()) {
-            m_RTFace.enableAndBind();
-            gl::drawBillboard( m_RTFacePos, sz, right, up);
-            m_RTFace.unbind();
-        }
+        m_RTFace.enableAndBind();
+        gl::drawBillboard( m_RTFacePos, sz, right, up);
+        m_RTFace.unbind();
 
         m_texture.enableAndBind();
         int fpl = 2048/64;
@@ -380,8 +277,48 @@ class Sean : public AppBasic {
             m_chosenAxes = 0;
 
         for(int i=0; i<m_positions[idx].size(); i++)
-            for(int j=0; j<3; j++)
-                m_positions[idx][i][j] = m_projection.at<float>(i,d(j));
+            m_positions[idx][i] = studentized(m_projection, i);
     }
+
+    Vec3f studentized(const cv::Mat& mtx, int i) {
+        Vec3f v;
+        for(int j=0; j<3; j++)
+            v[j] = (mtx.at<float>(i,d(j)) - m_mean[d(j)]) / m_stddev[d(j)];
+        return v;
+    }
+
+    void toggleFullscreen()
+    {
+        setFullScreen(! isFullScreen() );
+    }
+
+    // fields
+    gl::Texture m_texture;
+    std::vector<Vec3f> m_positions[2];
+    float m_interp, m_interpTime;
+    std::vector<int> m_order;
+
+    CameraPersp m_cam;
+    PersistentParams m_gui;
+
+    Capture m_capture;
+    gl::Texture m_RTFace;
+    Vec3f m_RTFaceProj, m_RTFacePos;
+
+    //! a shuffled vector of eigenspace axes
+    std::vector<int> m_eigenAxes;
+    //! offset into m_eigenAxes
+    int m_chosenAxes;
+
+    cv::CascadeClassifier m_classifier;
+    cv::PCA m_pca;
+    cv::Mat m_projection;
+    std::vector<float> m_mean, m_stddev;
+
+    float m_targetDistance, m_portraitSize;
+
+    float m_flightInertia, m_followInertia, m_rotateInertia;
+    Animator m_animator;
 };
+
 CINDER_APP_BASIC( Sean, RendererGl )
