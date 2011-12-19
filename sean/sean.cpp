@@ -55,10 +55,6 @@ class Sean : public AppBasic {
             yml["eigenvectors"] >> m_pca.eigenvectors;
             yml["eigenvalues"] >> m_pca.eigenvalues;
             yml["mean"] >> m_pca.mean;
-
-            // well, actually we only care for the first three...
-            //m_pca.eigenvectors = m_pca.eigenvectors.rowRange(0,2);
-            //m_pca.eigenvalues = m_pca.eigenvalues.rowRange(0,2);
         }
 
         Rand::randomize();
@@ -135,7 +131,8 @@ class Sean : public AppBasic {
             m_capture = Capture(320,240,devices[0]);
             m_capture.start();
         }
-        m_RTFaceProj = m_RTFacePos = Vec3f(0,0,0);
+        m_RTFacePos = Vec3f(0,0,0);
+        m_RTProj = cv::Mat::zeros(1,m_pca.eigenvectors.rows,CV_32F);
         m_classifier.load(
                 loadResource("haarcascade_frontalface_alt.xml")
                 ->getFilePath().native());
@@ -170,15 +167,14 @@ class Sean : public AppBasic {
                     Surface8u face( fromOcv(frame));
                     m_RTFace.update( face, m_RTFace.getBounds() );
                     // project to eigen space
-                    cv::Mat proj = m_pca.project( frame.reshape(0,1) );
-                    m_RTFaceProj = studentized(proj, 0);
+                    m_RTProj = m_pca.project( frame.reshape(0,1) );
                 }
             } catch (cv::Exception& e) {
                 // ignore
             }
         }
         // move face toward projected position
-        m_RTFacePos = m_RTFacePos.lerp(m_flightInertia, m_RTFaceProj);
+        m_RTFacePos = m_RTFacePos.lerp(m_flightInertia, studentized(m_RTProj, 0));
 
         // move the camera to a certain offset from rt face
         Vec3f flyTarget = m_RTFacePos;
@@ -303,7 +299,8 @@ class Sean : public AppBasic {
 
     Capture m_capture;
     gl::Texture m_RTFace;
-    Vec3f m_RTFaceProj, m_RTFacePos;
+    cv::Mat m_RTProj;
+    Vec3f m_RTFacePos;
 
     //! a shuffled vector of eigenspace axes
     std::vector<int> m_eigenAxes;
