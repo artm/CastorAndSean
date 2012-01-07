@@ -37,8 +37,8 @@ class Sean : public AppBasic {
     virtual ~Sean() {
         PersistentParams::save();
     }
-    void setup()
-    {
+
+    void setup() {
         // load the projected
         std::vector<std::string> seedNames;
         { // load projection
@@ -195,8 +195,7 @@ class Sean : public AppBasic {
         sortSprites();
     }
 
-    void draw()
-    {
+    void draw() {
         Vec2f sz = Vec2f(1,1) * m_portraitSize;
 
         gl::clear( Color(0,0,0), true );
@@ -224,38 +223,32 @@ class Sean : public AppBasic {
         params::InterfaceGl::draw();
     }
 
-    void resize(ResizeEvent e)
-    {
+    void resize(ResizeEvent e) {
         m_cam.setAspectRatio(e.getAspectRatio());
     }
 
-    void sortSprites()
-    {
+    void sortSprites() {
         // sort by distance from camera
         std::sort(m_order.begin(), m_order.end(),
                 boost::bind(&Sean::further, this, _1, _2));
     }
 
     //! i-th chosen shuffled axis
-    int d(int i)
-    {
+    int d(int i) {
         return m_eigenAxes[m_chosenAxes + i];
     }
 
     //! interpolated position of i-th sprite
-    Vec3f p(int i)
-    {
+    Vec3f p(int i) {
         return m_positions[0][i].lerp(m_interp, m_positions[1][i]);
     }
 
-    void shuffleAxes()
-    {
+    void shuffleAxes() {
         push_back( m_eigenAxes, irange(0,m_pca.eigenvectors.rows) );
         random_shuffle( m_eigenAxes );
     }
 
-    void otherAxes()
-    {
+    void otherAxes() {
         if (!m_animator.isFinished("interp"))
             return;
 
@@ -283,8 +276,7 @@ class Sean : public AppBasic {
         return v;
     }
 
-    void toggleFullscreen()
-    {
+    void toggleFullscreen() {
         setFullScreen(! isFullScreen() );
     }
 
