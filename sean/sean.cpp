@@ -1,5 +1,4 @@
 #include "Animator.hpp"
-#include "PersistentParams.hpp"
 
 #include <cinder/app/AppBasic.h>
 #include <cinder/gl/gl.h>
@@ -11,6 +10,7 @@
 #include <cinder/Arcball.h>
 #include <cinder/Rand.h>
 #include <cinder/Easing.h>
+#include <cinder/params/Params.h>
 
 #include <CinderOpenCV.h>
 
@@ -28,6 +28,7 @@
 
 using namespace ci;
 using namespace ci::app;
+using namespace ci::params;
 
 using namespace boost;
 using namespace boost::adaptors;
@@ -35,7 +36,7 @@ using namespace boost::adaptors;
 
 class Sean : public AppBasic {
     virtual ~Sean() {
-        PersistentParams::save();
+        InterfaceGl::save();
     }
 
     void setup() {
@@ -92,8 +93,8 @@ class Sean : public AppBasic {
 
         m_cam.setPerspective( 90.0f, getWindowAspectRatio(), 0.01f, 5.0f );
 
-        PersistentParams::load( std::string(getenv("HOME")) + "/.seanrc" );
-        m_gui = PersistentParams( "Sean Archer", Vec2i( 250, 250 ) );
+        InterfaceGl::load( std::string(getenv("HOME")) + "/.seanrc" );
+        m_gui = InterfaceGl( "Sean Archer", Vec2i( 250, 250 ) );
 
         m_gui.addPersistentParam("Flight inertia", &m_flightInertia, 0.1,
                 "min=1e-5 max=1 step=1e-3 precision=5");
@@ -287,7 +288,7 @@ class Sean : public AppBasic {
     std::vector<int> m_order;
 
     CameraPersp m_cam;
-    PersistentParams m_gui;
+    InterfaceGl m_gui;
 
     Capture m_capture;
     gl::Texture m_RTFace;

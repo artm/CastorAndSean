@@ -5,7 +5,6 @@ ADD_EXECUTABLE(sean MACOSX_BUNDLE
   ../../data/eigen/pca.yml
   ${CLASSIFIER}
   ${SEED_PNG}
-  PersistentParams.cpp
   sean.cpp)
 SET_TARGET_PROPERTIES(sean
   PROPERTIES
